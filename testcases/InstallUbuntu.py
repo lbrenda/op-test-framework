@@ -46,6 +46,64 @@ class MyIPfromHost(unittest.TestCase):
         my_ip = self.system.get_my_ip_from_host_perspective()
         print "# FOUND MY IP: %s" % my_ip
 
+class testingBootOptions(unittest.TestCase):
+    def setUp(self):
+        conf = OpTestConfiguration.conf
+        self.conf = conf
+        self.host = conf.host()
+        self.ipmi = conf.ipmi()
+        self.system = conf.system()
+        self.bmc = conf.bmc()
+        self.util = OpTestUtil()
+        self.bmc_type = conf.args.bmc_type
+        #if not self.host.get_boot_os():
+        #    self.fail("Provide proper host disk to install refer, --host-scratch-disk")
+
+    def runTest(self):
+#	print "BRENDA TEST 1 from Petitboot to OS"
+#	self.system.goto_state(OpSystemState.PETITBOOT)
+#	print "BRENDA entered PETITBOOT"
+#	self.system.goto_state(OpSystemState.OS)
+#        print "BRENDA entered OS"
+#        print "BRENDA TEST 1 passed from PETITBOOT."
+#
+	print "BRENDA TEST 2 from Petitboot shell to OS"
+	self.system.goto_state(OpSystemState.PETITBOOT_SHELL)
+	print "BRENDA entered PETITBOOT_SHELL"
+	self.system.goto_state(OpSystemState.OS)
+        print "BRENDA entered OS"
+        print "BRENDA TEST 2 passed from PETTITBOOT_SHELL."
+
+#	print "BRENDA TEST 3 from OFF to OS"
+#	self.system.goto_state(OpSystemState.OFF)
+#	print "BRENDA turned off"
+#	self.system.goto_state(OpSystemState.OS)
+#        print "BRENDA entered OS"
+#        print "BRENDA TEST 3 passed from OFF."
+
+#        self.system.goto_state(OpSystemState.PETITBOOT_SHELL)
+#	self.c = self.system.sys_get_ipmi_console()
+#	boot_os = self.host.get_boot_os()
+#	boot_os = boot_os.replace('(', '\(').replace('+', '\+').replace(')', '\)')
+#	if false: #pb-event boot whatever exists
+#		#'pb-event boot@%s name=%s' % (scratch_disk, boot_os)
+#
+#	else:
+#	    # Selecting OS from Petitboot menu
+#	    self.system.goto_state(OpSystemState.PETITBOOT)
+#	    rawc = self.c.get_console()
+#	    r = None
+#	    while r != 0:
+#		time.sleep(0.2)
+#		r = rawc.expect(['\*.*\s+' + boot_os, '\*.*\s+', pexpect.TIMEOUT],
+#				timeout=1)
+#		if r == 0:
+#		    break
+#		rawc.send("\x1b[A")
+#		rawc.expect('')
+#		rawc.sendcontrol('l')
+	pass
+
 
 class InstallUbuntu(unittest.TestCase):
     def setUp(self):

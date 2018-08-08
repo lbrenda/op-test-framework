@@ -101,6 +101,7 @@ class OpTestSystem(object):
         self.block_setup_term = 0
         self.stop = 0
         self.ignore = 0
+	self.select_os_attempts = 0
 
         self.openpower = 'openpower' # string to define petitboot kernel cat /proc/version column 3, change if using debug petitboot kernel
 
@@ -337,14 +338,22 @@ class OpTestSystem(object):
         r = sys_console.expect(["x=exit", "Petitboot", ".*#", ".*\$", "login:", pexpect.TIMEOUT, pexpect.EOF], timeout=5)
         if r in [0,1]:
           if (target_state == OpSystemState.PETITBOOT):
+	    print "BRENDA in detect target r is 0 or 1, target PETITBOOT"
             return OpSystemState.PETITBOOT
           elif (target_state == OpSystemState.PETITBOOT_SHELL):
+	    print "BRENDA in detect target r is 0 or 1, target PETITBOOT SHELL"
             self.petitboot_exit_to_shell()
             return OpSystemState.PETITBOOT_SHELL
           elif (target_state == OpSystemState.OS) and reboot:
-            self.petitboot_exit_to_shell()
-            self.run_REBOOT(target_state)
-            return OpSystemState.UNKNOWN
+            print "BRENDA in detect_target r is 0 or 1, target OS"
+	    self.petitboot_exit_to_shell()
+	    if self.cv_HOST.get_boot_os():
+		print "BRENDA boot_os provided. target OS, going to PB shell"
+            	return OpSystemState.PETITBOOT_SHELL
+            else:
+		print "BRENDA no boot_os provided. target OS, rebooting"
+		self.run_REBOOT(target_state)
+	    return OpSystemState.UNKNOWN
           else:
             return OpSystemState.UNKNOWN
         elif r in [2,3]:
@@ -354,6 +363,7 @@ class OpTestSystem(object):
             return detect_state
           elif reboot:
             if target_state in [OpSystemState.OS]:
+              print "BRENDA in detect_target r is 2 or 3"
               self.run_REBOOT(target_state)
               return OpSystemState.UNKNOWN
             elif target_state in [OpSystemState.PETITBOOT]:
@@ -381,9 +391,11 @@ class OpTestSystem(object):
               return OpSystemState.UNKNOWN
         elif r == 4:
           if (target_state == OpSystemState.OS):
+            print "BRENDA in detect_target r is 4"
             return OpSystemState.OS
           elif reboot:
             if target_state in [OpSystemState.OS,OpSystemState.PETITBOOT,OpSystemState.PETITBOOT_SHELL]:
+              print "BRENDA in detect_target r if 4 part 2"
               self.run_REBOOT(target_state)
               return OpSystemState.UNKNOWN
             else:
@@ -418,6 +430,7 @@ class OpTestSystem(object):
             return OpSystemState.PETITBOOT_SHELL
           elif echo_rc == 1:
             self.previous_state = OpSystemState.OS
+            print "BRENDA checking kernel and prev state is OS"
             return OpSystemState.OS
           else:
             return OpSystemState.UNKNOWN
@@ -546,6 +559,7 @@ class OpTestSystem(object):
 
         try:
           if (target_state == OpSystemState.OS):
+            print "BRENDA in run_REBOOT"
             my_r, my_reconnect = self.wait_for_it(expect_dict=self.login_expect_table,
                reconnect=self.login_reconnect, threshold=self.threshold_login, loop_max=100)
           else:
@@ -572,10 +586,13 @@ class OpTestSystem(object):
         self.sys_sdr_clear()
 
         if state == OpSystemState.OS:
+            print "BRENDA in run_OFF"
             # By default auto-boot will be enabled, set no override
             # otherwise system endup booting in default disk.
-            self.sys_set_bootdev_no_override()
-            #self.cv_IPMI.ipmi_set_boot_to_disk()
+	    if self.cv_HOST.get_boot_os() and self.cv_HOST.get_scratch_disk():
+        	self.sys_set_bootdev_setup()
+            else:
+		self.cv_IPMI.ipmi_set_boot_to_disk()
         if state == OpSystemState.PETITBOOT or state == OpSystemState.PETITBOOT_SHELL:
             self.sys_set_bootdev_setup()
 
@@ -626,6 +643,80 @@ class OpTestSystem(object):
           self.sys_sel_check()
           return OpSystemState.PETITBOOT
 
+    def select_boot_os(self):
+	print "BRENDA in select_boot_os"
+        # TODO what is block_setup_term...
+        self.c = self.sys_get_ipmi_console()
+        boot_os = self.cv_HOST.get_boot_os()
+        boot_os = boot_os.replace('(', '\(').replace('+', '\+').replace(')', '\)')
+        boot_disk = self.cv_HOST.get_scratch_disk()
+        boot_disk = boot_disk.replace('(', '\(').replace('+', '\+').replace(')', '\)')
+	rawc = self.c.get_console()
+	r = None
+	while self.select_os_attempts <= 3:
+	   self.select_os_attempts += 1
+	   #version = self.cv_HOST.host_run_command("pb-discover -V") # this one just hangs...
+	   version = rawc.sendline("pb-discover -v")
+	   print "BRENDA!!!!!!!!!!!!!!!!"
+	   print "BRENDA Version!"
+	   print version
+	   print "BRENDA before"
+	   r = rawc.expect(".*")
+	   print rawc.before
+	   print "BRENDA before"
+	   print rawc.before
+	   if boot_disk: # TODO and petitboot version > x:
+	      rawc.send("pb-event boot@%s name='%s'" % (boot_disk, boot_os))
+
+	   r = rawc.expect(["The system is going down NOW!", pexpect.TIMEOUT], timeout=1)
+	   if r == 0:
+		return
+
+	   else: # Selecting OS from Petitboot menu
+	      print "BRENDA is going to try to select from the petitboot menu"
+	      self.exit_petitboot_shell()
+
+	      # Go to bottom of petitboot menu
+	      previous = ''
+	      current = rawc.before
+	      while previous != rawc.before:
+		print "BRENDA going down"
+		previous = rawc.before
+		time.sleep(0.2)
+	  	r = rawc.expect(['\*.*', pexpect.TIMEOUT],
+		   timeout=1)
+		rawc.send("\x1b[B")
+
+	      # Search upwards for petitboot menu item
+	      previous = ''
+	      while previous != current:
+		  print "BRENDA going up"
+	          previous = current
+	          time.sleep(0.2)
+	          r = rawc.expect(['\*.*\s+' + boot_os, '\*.*\s+', pexpect.TIMEOUT],
+	   	          timeout=1)
+	          if r == 0:
+		     print "BRENDA FOUND THE OS. before:"
+		     rawc.send('\n')
+	             r = rawc.expect(['\*.*\s+', 'Error loading kernel image', pexpect.TIMEOUT],
+	   	          timeout=1)
+		     if r == 1:
+			print "BRENDA there was an error loading kernel image"
+			self.select_os_attempts = 5
+			break
+		     return
+	          rawc.send("\x1b[A")
+	          r = rawc.expect(['\*.*\s+' + boot_os, '\*.*\s+', pexpect.TIMEOUT],
+	   	          timeout=1)
+		  current = rawc.before
+	          rawc.expect('')
+	          rawc.sendcontrol('l')
+	else:	# If we've tried selecting OS more than 3 times, it's likely we cannot.
+	   print "BRENDA failed to select. clearing."
+	   self.cv_HOST.clear_boot_os()
+	   self.cv_HOST.clear_scratch_disk()
+	return
+
     def run_PETITBOOT(self, state):
         self.block_setup_term = 1
         if state == OpSystemState.PETITBOOT:
@@ -641,6 +732,13 @@ class OpTestSystem(object):
             return OpSystemState.POWERING_OFF
 
         if state == OpSystemState.OS:
+            print "BRENDA in run_PETITBOOT"
+	    print "BRENDA I want to select this os: %s" % self.cv_HOST.get_boot_os()
+	    if self.cv_HOST.get_boot_os() and self.cv_HOST.get_scratch_disk:
+		self.select_boot_os()
+		if not self.cv_HOST.get_boot_os():
+		   self.sys_power_off()
+		   return OpSystemState.POWERING_OFF
             return OpSystemState.BOOTING
 
         raise UnknownStateTransition(state=self.state, msg="OpTestSystem in run_PETITBOOT and something caused the system to go to UNKNOWN")
@@ -653,6 +751,10 @@ class OpTestSystem(object):
             return OpSystemState.PETITBOOT_SHELL
 
         if state == OpSystemState.PETITBOOT:
+            self.exit_petitboot_shell()
+            return OpSystemState.PETITBOOT
+
+	if state == OpSystemState.OS and self.cv_HOST.get_boot_os():
             self.exit_petitboot_shell()
             return OpSystemState.PETITBOOT
 
@@ -686,11 +788,14 @@ class OpTestSystem(object):
 
         if login_r != -1:
           self.block_setup_term = 0
+          print "BRENDA in run_BOOTING"
           return OpSystemState.OS
 
     def run_OS(self, state):
         self.block_setup_term = 0
         if state == OpSystemState.OS:
+		# TODO if host scratch disk provided, check if in correct space. if not, reboot.
+            print "BRENDA in run_OS"
             return OpSystemState.OS
         self.ipmiDriversLoaded = False
         self.sys_power_off()

@@ -93,6 +93,7 @@ def get_parser():
     hostgroup.add_argument("--host-password", help="SSH password for Host")
     hostgroup.add_argument("--host-lspci", help="Known 'lspci -n -m' for host")
     hostgroup.add_argument("--host-scratch-disk", help="A block device we can erase", default="")
+    hostgroup.add_argument("--host-boot-os", help="Name of operating system to be booted to", default="")
     hostgroup.add_argument("--host-prompt", default="#",
                            help="Prompt for Host SSH session")
 
@@ -279,6 +280,7 @@ class OpTestConfiguration():
                           self.args.bmc_ip,
                           self.output,
                           scratch_disk=self.args.host_scratch_disk,
+                          boot_os=self.args.host_boot_os,
                           proxy=self.args.proxy,
                           logfile=self.logfile,
                           check_ssh_keys=self.args.check_ssh_keys,
